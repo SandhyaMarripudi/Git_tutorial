@@ -1,0 +1,684 @@
+-- CALL  mm.p_addindents('<Indent><IndentAttributes ToStore="1121025614604" StoreCode="1121021134475" DepartmentId="113" IndentType="2" UserId="137299" UHID="MHN1.0000124316" OTNO="" Billingtypeid="1" Region="1" Surgerydate="18-Mar-2024 09:14:07" Bedno="" Opno="NSKOPP528238" DoctorsName="" RefNumber="0" IPNAME="MRS. PARVATI SHASHIKANT NAGPURE" CreatedDate="18-Mar-2024 09:14:03" CreatedBy="137299" DateRequiredOn="18-Mar-2024 09:14:07" TransactionType="2" BillNo="NSK-OCS-443771" RegionId="12102" Statusid="0" /><IndentItems ItemCode="0101170000002620432" RequiredQuantity="1" Remarks="er" DrugProfileId="0" ItemValue="91.72" /><IndentItems ItemCode="0101170000002619725" RequiredQuantity="1" Remarks="" DrugProfileId="0" ItemValue="93.05" /><IndentValue TotalIndentValue="184.77" /></Indent>',null); 
+
+CREATE OR REPLACE
+PROCEDURE mm.p_addindents(
+	IN iclob_indentdetails text,
+	INOUT v_retreceiveitemscode text)
+LANGUAGE 'plpgsql'
+    SECURITY DEFINER 
+AS $BODY$
+DECLARE
+	v_indentdetails xml ;
+
+v_seqindentcode varchar(19) ;
+
+v_materialrequestid NUMERIC ;
+
+v_materialrequestdetailsid NUMERIC ;
+
+v_locationid NUMERIC ;
+
+v_transactiontype NUMERIC ;
+
+v_userid varchar(50) ;
+--azure id-14696-inclusion of created and updated date in mm table
+ 
+rec RECORD ;
+BEGIN
+	SET
+	search_path TO mm,
+	oracle ;
+--reviewed by sukanya through qmigrator on 19dec23
+ 
+v_indentdetails := xml(iclob_indentdetails) ;
+--raise notice  '%v_indentdetails'  ,v_indentdetails;
+-- select unnest(xpath('indent/indentattributes/@regionid' , v_indentdetails) ) into v_locationid ;
+
+ 
+v_locationid := 
+(
+	CASE
+WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@RegionId' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@RegionId' ,
+		v_indentdetails) ) ) ::text::NUMERIC
+END) ;
+-- select unnest(xpath('indent/indentattributes/@transactiontype' , v_indentdetails) ) into v_transactiontype ;
+
+v_transactiontype := 
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@TransactionType' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@TransactionType' ,
+		v_indentdetails) ) ) ::text::NUMERIC
+END) ;
+
+v_userid :=
+--v_indentdetails.extract('indent/indentattributes/@userid') .getstringval() ;
+
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@UserId' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@UserId' ,
+		v_indentdetails) ) ) ::text
+END) ;
+--raise notice  '%v_locationid'  ,v_locationid;
+--raise notice  '%v_transactiontype'  ,v_transactiontype;
+--azure id-14696-inclusion of created and updated date in mm table
+/* autogenetation sequence*/
+--calling function
+
+IF (v_transactiontype = 1) THEN
+--raise notice  'if1 started'  ;
+--storeindent
+v_seqindentcode := mm.f_getnexttransactioncode( 'IN' ::text,
+v_locationid::text,
+1) ;
+ELSE
+--raise notice  'else1 started'  ;
+
+IF
+(v_transactiontype = 3) 
+THEN
+--departmentindent
+--raise notice  'if2 started'  ;
+
+v_seqindentcode := mm.f_getnexttransactioncode( 'CIN' ::text,
+v_locationid::text,
+1) ;
+ELSE
+--raise notice  'else2 started'  ;
+
+IF
+(v_transactiontype = 2
+OR v_transactiontype = 4) 
+THEN
+-- patient nonconsignment(2) ,consignment(4) 
+--raise notice  'if3 started'  ;
+
+v_seqindentcode := mm.f_getnexttransactioncode( 'PMIN' ::text,
+v_locationid::text,
+1) ;
+--raise notice  'if3 ended'  ;
+END IF ;
+--raise notice  'if2 ended'  ;
+END IF ;
+--raise notice  'if1 ended'  ;
+END IF ;
+--select v_seqindentcode into v_seqindentcode from mm.materialrequest;
+-- for update;
+SELECT
+	nextval('mm.materialrequestid_seq') 
+INTO
+	strict v_materialrequestid ;
+--inserting into material request
+--raise notice  '%v_materialrequestid'  ,v_materialrequestid;
+--raise notice  'insert1 started'  ;
+
+INSERT
+	INTO
+	mm.materialrequest(materialrequestid,
+	materialprofilecode,
+	indentcode,
+	storecode,
+	indentbystore,
+	indenttype,
+	userid,
+	createddate,
+	createdby,
+	indentdate,
+	needdate,
+	operatorname,
+	remarks,
+	statusid,
+	departmentid,
+	transactiontype,
+	uhid,
+	ipno,
+	refnumber,
+	ipname,
+	doctorid,
+	otno,
+	opno,
+	surgerydate,
+	surgeryname,
+	bedno,
+	billno,
+	regionid,
+	billnigtype)
+VALUES
+(v_materialrequestid,
+--(select unnest(xpath('indent/indentattributes/@materialprofilecode' , v_indentdetails) ) ) ,
+
+ 
+(
+	CASE
+WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@MaterialProfileCode' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@MaterialProfileCode' ,
+		v_indentdetails) ) ) ::text
+END) ,
+v_seqindentcode,
+--(select unnest(xpath('indent/indentattributes/@tostore' , v_indentdetails) ) ) ,
+
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@ToStore' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@ToStore' ,
+		v_indentdetails) ) ) ::text
+END) ,
+--(select unnest(xpath('indent/indentattributes/@storecode' , v_indentdetails) ) ) ,
+
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@StoreCode' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@StoreCode' ,
+		v_indentdetails) ) ) ::text
+END) ,
+--(select unnest(xpath('indent/indentattributes/@indenttype' , v_indentdetails) ) ) ,
+ 
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@IndentType' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@IndentType' ,
+		v_indentdetails) ) ) ::text::numeric
+END) ,
+--(select unnest(xpath('indent/indentattributes/@userid' , v_indentdetails) ) ) ,
+
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@UserId' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@UserId' ,
+		v_indentdetails) ) ) ::text
+END) ,
+clock_timestamp() ,
+--(select unnest(xpath('indent/indentattributes/@createdby' , v_indentdetails) ) ) ,
+
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@CreatedBy' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@CreatedBy' ,
+		v_indentdetails) ) ) ::text
+END) ,
+clock_timestamp() ,
+to_date(
+
+ --(select unnest(xpath('indent/indentattributes/@daterequiredon' , v_indentdetails) ) ) ,
+(CASE WHEN(SELECT UNNEST(xpath( 'Indent/IndentAttributes/@DateRequiredOn' , v_indentdetails) ) ) ::text = '' THEN NULL
+ELSE
+(SELECT UNNEST(xpath( 'Indent/IndentAttributes/@DateRequiredOn' , v_indentdetails) ) ) ::text END) ,
+ 'DD-MON-YYYY HH24:MI:SS' ::text) ,
+--(select unnest(xpath('indent/indentattributes/@operatorname' , v_indentdetails) ) ) ,
+ 
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@OperatorName' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@OperatorName' ,
+		v_indentdetails) ) ) ::text
+END) ,
+--(select unnest(xpath('indent/indentattributes/@remarks' , v_indentdetails) ) ) ,
+ 
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@Remarks' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@Remarks' ,
+		v_indentdetails) ) ) ::text
+END) ,
+--(select unnest(xpath('indent/indentattributes/@statusid' , v_indentdetails) ) ) ,
+
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@Statusid' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@Statusid' ,
+		v_indentdetails) ) ) ::text::NUMERIC
+END) ,
+--(select unnest(xpath('indent/indentattributes/@departmentid' , v_indentdetails) ) ) ,
+ 
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@DepartmentId' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@DepartmentId' ,
+		v_indentdetails) ) ) ::text
+END) ,
+--(select unnest(xpath('indent/indentattributes/@transactiontype' , v_indentdetails) ) ) ,
+ 
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@TransactionType' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@TransactionType' ,
+		v_indentdetails) ) ) ::text::NUMERIC
+END) ,
+--(select unnest(xpath('indent/indentattributes/@uhid' , v_indentdetails) ) ) ,
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@UHID' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@UHID' ,
+		v_indentdetails) ) ) ::text
+END) ,
+--(select unnest(xpath('indent/indentattributes/@ipno' , v_indentdetails) ) ) ,
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@IPNO' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@IPNO' ,
+		v_indentdetails) ) ) ::text
+END) ,
+--(select unnest(xpath('indent/indentattributes/@refnumber' , v_indentdetails) ) ) ,
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@RefNumber' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@RefNumber' ,
+		v_indentdetails) ) ) ::text
+END) ,
+--(select unnest(xpath('indent/indentattributes/@ipname' , v_indentdetails) ) ) ,
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@IPNAME' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@IPNAME' ,
+		v_indentdetails) ) ) ::text
+END) ,
+--(select unnest(xpath('indent/indentattributes/@doctorsname' , v_indentdetails) ) ) ,
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@DoctorsName' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@DoctorsName' ,
+		v_indentdetails) ) ) ::text
+END) ,
+--(select unnest(xpath('indent/indentattributes/@otno' , v_indentdetails) ) ) ,
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@OTNO' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@OTNO' ,
+		v_indentdetails) ) ) ::text
+END) ,
+--(select unnest(xpath('indent/indentattributes/@opno' , v_indentdetails) ) ) ,
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@Opno' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@Opno' ,
+		v_indentdetails) ) )::text
+END),
+to_date(
+
+ --(select unnest(xpath('indent/indentattributes/@surgerydate' , v_indentdetails) ) ) ,
+(CASE WHEN(SELECT UNNEST(xpath( 'Indent/IndentAttributes/@Surgerydate' , v_indentdetails) ) ) ::text = '' THEN NULL
+ELSE
+(SELECT UNNEST(xpath( 'Indent/IndentAttributes/@Surgerydate' , v_indentdetails) ) ) ::text END) ,
+ 'DD-MON-YYYY HH24:MI:SS' ::text) ,
+--(select unnest(xpath('indent/indentattributes/@surgeryname' , v_indentdetails) ) ) ,
+
+ 
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@Surgeryname' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@Surgeryname' ,
+		v_indentdetails) ) ) ::text
+END) ,
+--(select unnest(xpath('indent/indentattributes/@bedno' , v_indentdetails) ) ) ,
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@Bedno' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@Bedno' ,
+		v_indentdetails) ) ) ::text
+END) ,
+--(select unnest(xpath('indent/indentattributes/@billno' , v_indentdetails) ) ) ,
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@BillNo' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@BillNo' ,
+		v_indentdetails) ) ) ::text
+END) ,
+--(select unnest(xpath('indent/indentattributes/@region' , v_indentdetails) ) ) ,
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@Region' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@Region' ,
+		v_indentdetails) ) ) ::text::numeric
+END) ,
+--(select unnest(xpath('indent/indentattributes/@billingtypeid' , v_indentdetails) ) ) ) ;
+(CASE
+	WHEN(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@Billingtypeid' ,
+		v_indentdetails) ) ) ::text = '' THEN NULL
+	ELSE
+(
+	SELECT
+		UNNEST(xpath( 'Indent/IndentAttributes/@Billingtypeid' ,
+		v_indentdetails) ) ) ::text::NUMERIC
+END) ) ;
+--inserting into material request details table
+SELECT
+	nextval('mm.materialrequestdetailsid_seq') 
+INTO
+	strict v_materialrequestdetailsid ;
+--raise notice  '%v_materialrequestdetailsid'  ,v_materialrequestdetailsid;
+--raise notice  'insert2 started'  ;
+
+INSERT
+	INTO
+	-- select count(*) from
+	mm.materialrequestdetails(materialrequestdetailsid,
+	-- 2424970
+	materialrequestid,
+	itemcode,
+	remarks,
+	qty,
+	drugprofileid,
+	createdby,
+	--azure id-14696-inclusion of created and updated date in mm table
+	createddate
+	--azure id-14696-inclusion of created and updated date in mm table
+)
+SELECT
+	res.*
+FROM
+	(
+	SELECT
+		nextval('mm.materialrequestdetailsid_seq') 
+AS "alias0",
+		v_materialrequestid 
+AS "alias1",
+		-- (select unnest(xpath('/indentitems/@itemcode' , l1i.value) ) ) as "alias2",
+
+ 
+(CASE
+			WHEN(
+			SELECT
+				UNNEST(xpath( '/IndentItems/@ItemCode' ,
+				l1i.value) ) ) ::text = '' THEN NULL
+			ELSE
+(
+			SELECT
+				UNNEST(xpath( '/IndentItems/@ItemCode' ,
+				l1i.value) ) ) ::text
+		END) 
+AS "alias2",
+		-- (select unnest(xpath('/indentitems/@remarks' , l1i.value) ) ) as "alias3",
+
+ 
+(CASE
+			WHEN(
+			SELECT
+				UNNEST(xpath( '/IndentItems/@Remarks' ,
+				l1i.value) ) ) ::text = '' THEN NULL
+			ELSE
+(
+			SELECT
+				UNNEST(xpath( '/IndentItems/@Remarks' ,
+				l1i.value) ) ) ::text
+		END) 
+AS "alias2",
+		-- (select unnest(xpath('/indentitems/@requiredquantity' , l1i.value) ) ) ::text::numeric as "alias4",
+
+ 
+(CASE
+			WHEN(
+			SELECT
+				UNNEST(xpath( '/IndentItems/@RequiredQuantity' ,
+				l1i.value) ) ) ::text = '' THEN NULL
+			ELSE
+(
+			SELECT
+				UNNEST(xpath( '/IndentItems/@RequiredQuantity' ,
+				l1i.value) ) ) ::text::NUMERIC
+		END) 
+AS "alias2",
+		(CASE
+			WHEN v_transactiontype IN(2, 3) 
+THEN(CASE
+				WHEN(
+				SELECT
+					UNNEST(xpath( '/IndentItems/@DrugProfileId' ,
+					l1i.value) ) ) ::text = '' THEN NULL
+				ELSE
+(
+				SELECT
+					UNNEST(xpath( '/IndentItems/@DrugProfileId' ,
+					l1i.value) ) ) ::text::NUMERIC
+			END)
+			ELSE NULL
+		END) 
+AS "alias5",
+		v_userid,
+		--azure id-14696-inclusion of created and updated date in mm table
+		clock_timestamp() ::timestamp
+		--azure id-14696-inclusion of created and updated date in mm table
+	FROM
+		(WITH ctc 
+AS(
+		SELECT
+			UNNEST(xpath( 'Indent/IndentItems' ,
+			v_indentdetails) ) 
+AS value)
+		SELECT
+			value
+		FROM
+			ctc) l1i) res ;
+--raise notice  'insert ended'  ;
+--start add by dxc technology on 18-dec-2020 start 
+--details: update the newly added columns itemvalue and totalcost
+FOR
+rec IN(
+SELECT
+	a.materialrequestid,
+	b.materialrequestdetailsid,
+	b.itemcode,
+	CASE
+		WHEN d.purchaseprice 
+IS NULL THEN c.purchaseprice
+		ELSE d.purchaseprice
+	END purchaseprice
+FROM
+	mm.materialrequest a
+INNER JOIN mm.materialrequestdetails b ON
+	(a.materialrequestid = b.materialrequestid)
+INNER JOIN mm.itemlocation c ON
+	c.itemcode = b.itemcode
+	--tfs 9562
+/*left outer join mm.hospitalwiseitemsurcharge d on d.itemcode = b.itemcode*/
+LEFT OUTER JOIN mm.hospitalwiseitemsurcharge d ON
+	d.itemcode = b.itemcode
+	AND d.hospitalid::text IN(
+	SELECT
+		s.hospitalid
+	FROM
+		mm.vwr_store s
+	WHERE
+		s.storecode = a.indentbystore)
+	--alias1
+WHERE
+	a.materialrequestid = v_materialrequestid) 
+LOOP
+--raise notice  'loop started'  ;
+DECLARE
+	vitemvalue NUMERIC ;
+
+vqty NUMERIC ;
+
+BEGIN
+SELECT
+	b.qty
+INTO
+	strict vqty
+FROM
+	mm.materialrequestdetails b
+WHERE
+	b.materialrequestdetailsid = rec.materialrequestdetailsid
+	AND b.itemcode = rec.itemcode ;
+--raise notice  '%vqty'  ,vqty;
+
+vitemvalue := vqty * rec.purchaseprice ;
+--raise notice  '%vitemvalue'  ,vitemvalue;
+--raise notice  '@update1'  ;
+
+UPDATE
+	mm.materialrequestdetails b
+SET
+	-- b.itemvalue = vitemvalue
+
+ 
+	itemvalue = vitemvalue,
+	updatedby = v_userid,
+	--azure id-14696-inclusion of created and updated date in mm table
+	updateddate = clock_timestamp() ::timestamp
+	--azure id-14696-inclusion of created and updated date in mm table
+WHERE
+	b.materialrequestdetailsid = rec.materialrequestdetailsid
+	AND b.itemcode = rec.itemcode ;
+--raise notice  '@update2'  ;
+
+UPDATE
+	mm.materialrequest b
+SET
+	totalcost = COALESCE(b.totalcost, 0) + vitemvalue,
+	updatedby = v_userid,
+	--azure id-14696-inclusion of created and updated date in mm table
+	updateddate = clock_timestamp() ::timestamp
+	--azure id-14696-inclusion of created and updated date in mm table
+WHERE
+	b.materialrequestid = rec.materialrequestid ;
+--raise notice  'update ended'  ;
+
+EXCEPTION
+WHEN OTHERS THEN raise notice '% % ' ,
+SQLSTATE,
+sqlerrm ;
+END ;
+--raise notice  'loop ended'  ;
+END
+LOOP
+;
+--end add by dxc technology on 18-dec-2020 
+
+/* select indentcode into v_seqindentcode from mm.materialrequest
+
+where materialrequestid = v_materialrequestid;*/
+v_retreceiveitemscode := v_seqindentcode ;
+END ;
+
+$BODY$;
